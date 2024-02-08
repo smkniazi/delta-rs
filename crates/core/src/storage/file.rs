@@ -287,7 +287,32 @@ mod imp {
         let to_path = String::from(to);
 
         tokio::task::spawn_blocking(move || {
-            std::fs::hard_link(&from_path, &to_path).map_err(|err| {
+
+            println!("hopsfs-fix deltalake rename_noreplace");
+            if std::fs::metadata(&to_path).is_ok() {
+                // to_path already exists
+                println!("hopsfs-fix deltalake exists {:?}", to_path);
+                let source = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "File exists");
+                return Err(LocalFileSystemError::AlreadyExists {
+                    path: to_path.to_string(),
+                    source: Box::new(source),
+                });
+            } else {
+                // check if parent exists
+                if let Some(parent) = std::path::Path::new(&to_path).parent() {
+                    if !parent.exists() {
+                        println!("hopsfs-fix deltalake parent does not exists {:?}", parent);
+                        let source = std::io::Error::new(std::io::ErrorKind::NotFound, "Not found");
+                        return Err(LocalFileSystemError::NotFound {
+                            path: to_path.to_string(),
+                            source: Box::new(source),
+                        });
+                    }
+                }
+            }
+
+            // std::fs::hard_link(&from_path, &to_path).map_err(|err| {
+            std::fs::rename(&from_path, &to_path).map_err(|err| {
                 if err.kind() == std::io::ErrorKind::AlreadyExists {
                     LocalFileSystemError::AlreadyExists {
                         path: to_path,
@@ -306,10 +331,11 @@ mod imp {
                 }
             })?;
 
-            std::fs::remove_file(from_path).map_err(|err| LocalFileSystemError::Generic {
-                store: STORE_NAME,
-                source: Box::new(err),
-            })?;
+            println!("hopsfs-fix deltalake rename worked");
+            // std::fs::remove_file(from_path).map_err(|err| LocalFileSystemError::Generic {
+            // store: STORE_NAME,
+            // source: Box::new(err),
+            // })?;
 
             Ok(())
         })
