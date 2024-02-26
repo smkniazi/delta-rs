@@ -2,6 +2,7 @@
 //!
 //! The local file storage backend is multi-writer safe.
 
+extern crate libc;
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use object_store::{
@@ -9,6 +10,7 @@ use object_store::{
     GetResult, ListResult, MultipartId, ObjectMeta, ObjectStore, PutOptions, PutResult,
     Result as ObjectStoreResult,
 };
+use std::ffi::CString;
 use std::ops::Range;
 use std::sync::Arc;
 use tokio::io::AsyncWrite;
@@ -287,57 +289,41 @@ mod imp {
         let to_path = String::from(to);
 
         tokio::task::spawn_blocking(move || {
+            let from_cstring = CString::new(from_path.clone()).expect("CString::new failed");
+            let to_cstring = CString::new(to_path.clone()).expect("CString::new failed");
 
-            println!("hopsfs-fix deltalake rename_noreplace");
-            if std::fs::metadata(&to_path).is_ok() {
-                // to_path already exists
-                println!("hopsfs-fix deltalake exists {:?}", to_path);
-                let source = std::io::Error::new(std::io::ErrorKind::AlreadyExists, "File exists");
-                return Err(LocalFileSystemError::AlreadyExists {
-                    path: to_path.to_string(),
-                    source: Box::new(source),
-                });
-            } else {
-                // check if parent exists
-                if let Some(parent) = std::path::Path::new(&to_path).parent() {
-                    if !parent.exists() {
-                        println!("hopsfs-fix deltalake parent does not exists {:?}", parent);
-                        let source = std::io::Error::new(std::io::ErrorKind::NotFound, "Not found");
-                        return Err(LocalFileSystemError::NotFound {
-                            path: to_path.to_string(),
-                            source: Box::new(source),
-                        });
-                    }
-                }
-            }
+            print!("hopsfs-fix delta-rs renamteat2\n");
+            unsafe {
+                let result = libc::renameat2(
+                    libc::AT_FDCWD,
+                    from_cstring.as_ptr(),
+                    libc::AT_FDCWD,
+                    to_cstring.as_ptr(),
+                    libc::RENAME_NOREPLACE,
+                );
 
-            // std::fs::hard_link(&from_path, &to_path).map_err(|err| {
-            std::fs::rename(&from_path, &to_path).map_err(|err| {
-                if err.kind() == std::io::ErrorKind::AlreadyExists {
-                    LocalFileSystemError::AlreadyExists {
-                        path: to_path,
-                        source: Box::new(err),
-                    }
-                } else if err.kind() == std::io::ErrorKind::NotFound {
-                    LocalFileSystemError::NotFound {
-                        path: from_path.clone(),
-                        source: Box::new(err),
+                if result == -1 {
+                    let error = std::io::Error::last_os_error();
+                    if error.kind() == std::io::ErrorKind::AlreadyExists {
+                        Err(LocalFileSystemError::AlreadyExists {
+                            path: String::from(to_path),
+                            source: Box::new(error),
+                        })
+                    } else if error.kind() == std::io::ErrorKind::NotFound {
+                        Err(LocalFileSystemError::NotFound {
+                            path:String::from(from_path),
+                            source: Box::new(error),
+                        })
+                    } else {
+                        Err(LocalFileSystemError::Generic {
+                            store: STORE_NAME,
+                            source: Box::new(error),
+                        })
                     }
                 } else {
-                    LocalFileSystemError::Generic {
-                        store: STORE_NAME,
-                        source: Box::new(err),
-                    }
+                  Ok(())
                 }
-            })?;
-
-            println!("hopsfs-fix deltalake rename worked");
-            // std::fs::remove_file(from_path).map_err(|err| LocalFileSystemError::Generic {
-            // store: STORE_NAME,
-            // source: Box::new(err),
-            // })?;
-
-            Ok(())
+            } //unsafe
         })
         .await
         .unwrap()
