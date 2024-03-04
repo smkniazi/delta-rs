@@ -292,7 +292,7 @@ mod imp {
             let from_cstring = CString::new(from_path.clone()).expect("CString::new failed");
             let to_cstring = CString::new(to_path.clone()).expect("CString::new failed");
 
-            print!("hopsfs-fix delta-rs renamteat2\n");
+            println!("hopsfs-fix delta-rs renamteat2. From: {:?} To: {:?}", from_path, to_path);
             unsafe {
                 let result = libc::renameat2(
                     libc::AT_FDCWD,
@@ -305,23 +305,26 @@ mod imp {
                 if result == -1 {
                     let error = std::io::Error::last_os_error();
                     if error.kind() == std::io::ErrorKind::AlreadyExists {
+                        println!("hopsfs-fix delta-rs renamteat2 AlreadyExista");
                         Err(LocalFileSystemError::AlreadyExists {
                             path: String::from(to_path),
                             source: Box::new(error),
                         })
                     } else if error.kind() == std::io::ErrorKind::NotFound {
+                        println!("hopsfs-fix delta-rs renamteat2 NotFound");
                         Err(LocalFileSystemError::NotFound {
-                            path:String::from(from_path),
+                            path: String::from(from_path),
                             source: Box::new(error),
                         })
                     } else {
+                        println!("hopsfs-fix delta-rs renamteat2 unhandled error: {}", error);
                         Err(LocalFileSystemError::Generic {
                             store: STORE_NAME,
                             source: Box::new(error),
                         })
                     }
                 } else {
-                  Ok(())
+                    Ok(())
                 }
             } //unsafe
         })

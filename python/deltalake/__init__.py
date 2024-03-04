@@ -10,4 +10,4 @@ from .table import WriterProperties as WriterProperties
 from .writer import convert_to_deltalake as convert_to_deltalake
 from .writer import write_deltalake as write_deltalake
 
-print("________new lib________")
+print("________new lib with rename2 with path prints________")

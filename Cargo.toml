@@ -79,5 +79,3 @@ futures = { version = "0.3" }
 tokio = { version = "1" }
 num_cpus = { version = "1" }
 
-# atomic rename
-libc ="0.2.153"
